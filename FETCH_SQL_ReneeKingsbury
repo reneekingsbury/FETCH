@@ -1,0 +1,94 @@
+-- Using SQLiteStudio
+-- Provide SQL queries to answer three questions
+
+-- Difficult to analyze and results are not complete without matching user and product to transactions.
+-- Closed-ended questions
+
+-- What are the top 5 brands by receipts scanned among users 21 and over?  Rephresh, Nerds, Dove, Trident, Sour Patch Kids
+
+-- The Common Table Expression (CTE) calculates a row number for each barcode, prioritizing records where brand is populated.
+-- The row number is used to select the most relevant record for each barcode.
+-- Using this approach because their are known duplicates in the products table.
+WITH ProductScores AS (
+    SELECT BARCODE, BRAND,
+           ROW_NUMBER() OVER (PARTITION BY BARCODE ORDER BY CASE WHEN BRAND IS NOT NULL AND TRIM(BRAND) != '' THEN 1 ELSE 0 END DESC) AS rn
+    FROM [PRODUCTS]
+)
+SELECT 
+    p.BRAND,
+    COUNT(DISTINCT t.RECEIPT_ID) AS Unique_Receipts
+FROM [TRANSACTION] AS t 
+LEFT JOIN ProductScores AS p
+ON t.BARCODE = p.BARCODE AND p.rn = 1
+LEFT JOIN [USER] AS u
+ON t.USER_ID = u.ID
+WHERE 
+p.BRAND IS NOT NULL AND
+TRIM(p.BRAND) != '' AND
+u.BIRTH_DATE IS NOT NULL AND
+(STRFTIME('%Y', 'now') - STRFTIME('%Y', u.BIRTH_DATE) - 
+(CASE WHEN STRFTIME('%m-%d', 'now') < STRFTIME('%m-%d', u.BIRTH_DATE) THEN 1 ELSE 0 END)) >= 21
+GROUP BY p.BRAND
+ORDER BY Unique_Receipts DESC
+LIMIT 5;
+
+
+
+-- What are the top 5 brands by sales among users that have had their account for at least six months? Rephresh, CVS, Trident, Dove, Coors Light
+  
+-- The Common Table Expression (CTE) calculates a row number for each barcode, prioritizing records where brand is populated.
+-- The row number is used to select the most relevant record for each barcode.
+-- Using this approach because their are known duplicates in the products table.
+
+WITH ProductScores AS (
+    SELECT BARCODE, BRAND, 
+           ROW_NUMBER() OVER (PARTITION BY BARCODE ORDER BY CASE WHEN BRAND IS NOT NULL AND TRIM(BRAND) != '' THEN 1 ELSE 0 END DESC) AS rn
+    FROM [PRODUCTS]
+)
+SELECT 
+    p.BRAND,
+    SUM(t.FINAL_SALE) AS Total_Sales
+FROM [TRANSACTION] AS t 
+LEFT JOIN ProductScores AS p
+ON t.BARCODE = p.BARCODE AND p.rn = 1
+LEFT JOIN [USER] AS u
+ON t.USER_ID = u.ID
+WHERE 
+p.BRAND IS NOT NULL AND
+TRIM(p.BRAND) != '' AND
+(STRFTIME('%Y', 'now') * 12 + STRFTIME('%m', 'now') - 
+(STRFTIME('%Y', u.CREATED_DATE) * 12 + STRFTIME('%m', u.CREATED_DATE))) >= 6
+GROUP BY p.BRAND
+ORDER BY Total_Sales DESC
+LIMIT 5;
+
+
+
+-- Which is the leading brand in the Dips & Salsa category? Tostitos
+
+-- The Common Table Expression (CTE) calculates a row number for each barcode, prioritizing records where both the brand and category_2 are populated.
+-- The row number is used to select the most relevant record for each barcode.
+-- Using this approach because their are known duplicates in the products table.
+
+WITH ProductScores AS (
+    SELECT BARCODE, BRAND, CATEGORY_2,
+           ROW_NUMBER() OVER (PARTITION BY BARCODE ORDER BY 
+               CASE WHEN BRAND IS NOT NULL AND TRIM(BRAND) != '' THEN 1 ELSE 0 END DESC,
+               CASE WHEN CATEGORY_2 IS NOT NULL AND TRIM(CATEGORY_2) != '' THEN 1 ELSE 0 END DESC
+           ) AS rn
+    FROM [PRODUCTS]
+) 
+SELECT 
+    p.BRAND,
+    SUM(t.FINAL_SALE) AS Total_Sales
+FROM [TRANSACTION] AS t 
+LEFT JOIN ProductScores AS p
+ON t.BARCODE = p.BARCODE AND p.rn = 1
+WHERE 
+p.BRAND IS NOT NULL AND
+TRIM(p.BRAND) != '' AND
+p.CATEGORY_2 = 'Dips & Salsa'
+GROUP BY p.BRAND
+ORDER BY Total_Sales DESC
+LIMIT 1;
+
